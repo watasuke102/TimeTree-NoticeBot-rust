@@ -71,24 +71,37 @@ fn create_embeds(events: &Vec<Event>) -> Embed {
         fields: Vec::<Field>::new(),
     };
 
-    let mut start = "".to_string();
-    let mut end = "".to_string();
     for e in events.iter() {
+        let mut time = "終日".to_string();
+        if !e.all_day {
+            if let Ok(start_datetime) = &e.start_at.parse::<DateTime<Utc>>() {
+                if let Ok(end_datetime) = &e.end_at.parse::<DateTime<Utc>>() {
+                    let start_datetime = start_datetime.with_timezone(&FixedOffset::east(9 * 3600));
+                    let end_datetime = end_datetime.with_timezone(&FixedOffset::east(9 * 3600));
+
+                    // 開始日と終了日が一致する場合は日付を表示しない
+                    if start_datetime.date() == end_datetime.date() {
+                        time = format!(
+                            "{}～{}",
+                            start_datetime.format("%H:%M"),
+                            end_datetime.format("%H:%M")
+                        )
+                        .to_string();
+                    } else {
+                        time = format!(
+                            "{}～{}",
+                            start_datetime.format("%m/%d %H:%M"),
+                            end_datetime.format("%m/%d %H:%M")
+                        )
+                        .to_string();
+                    }
+                }
+            }
+        }
+
         result.fields.push(Field {
             name: format!("{}", e.title).to_string(),
-            value: if e.all_day {
-                "終日".to_string()
-            } else {
-                if let Ok(start_datetime) = &e.start_at.parse::<DateTime<Utc>>() {
-                    let start_datetime = start_datetime.with_timezone(&FixedOffset::east(9 * 3600));
-                    start = start_datetime.format("%H:%M").to_string();
-                }
-                if let Ok(end_datetime) = &e.end_at.parse::<DateTime<Utc>>() {
-                    let end_datetime = end_datetime.with_timezone(&FixedOffset::east(9 * 3600));
-                    end = end_datetime.format("%H:%M").to_string();
-                }
-                format!("{}～{}", start, end)
-            },
+            value: time,
         });
     }
     result
