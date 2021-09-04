@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{DateTime, FixedOffset, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs::File;
@@ -12,11 +12,96 @@ struct Settings {
     timetree_id: String,
 }
 
-#[tokio::main]
-async fn send_message(settings: Settings) -> Result<(), Box<dyn std::error::Error>> {
-    println!("[info] Sending message...");
-    let date = Utc::now().format("%Y/%m/%d").to_string();
+#[derive(Debug, Serialize, Deserialize)]
+struct Event {
+    title: String,
+    all_day: bool,
+    start_at: String,
+    end_at: String,
+}
 
+#[tokio::main]
+async fn fetch_timetree_event(
+    settings: &Settings,
+) -> Result<Vec<Event>, Box<dyn std::error::Error>> {
+    #[derive(Debug, Serialize, Deserialize)]
+    struct TimeTreeEventList {
+        data: Vec<TimeTreeAttributes>,
+    }
+    #[derive(Debug, Serialize, Deserialize)]
+    struct TimeTreeAttributes {
+        attributes: Event,
+    }
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!(
+            "https://timetreeapis.com/calendars/{}/upcoming_events?timezone=Asia/Tokyo",
+            settings.timetree_id
+        ))
+        .header("Authorization", format!("Bearer {}", settings.timetree_key))
+        .header("Accept", "application/vnd.timetree.v1+json")
+        .send()
+        .await?
+        .json::<TimeTreeEventList>()
+        .await?;
+    let mut events: Vec<Event> = Vec::new();
+    for item in resp.data {
+        events.push(item.attributes);
+    }
+    Ok(events)
+}
+#[derive(Debug, Serialize, Deserialize)]
+struct Embed {
+    title: String,
+    description: String,
+    color: u32,
+    fields: Vec<Field>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+struct Field {
+    name: String,
+    value: String,
+}
+
+fn create_embeds(events: &Vec<Event>) -> Embed {
+    let mut result = Embed {
+        title: "今日の予定".to_string(),
+        description: format!("今日の予定は{}件です。", events.len()).to_string(),
+        color: 0x2ecc87, // TimeTree logo color
+        fields: Vec::<Field>::new(),
+    };
+
+    let mut start = "".to_string();
+    let mut end = "".to_string();
+    for e in events.iter() {
+        result.fields.push(Field {
+            name: format!("{}", e.title).to_string(),
+            value: if e.all_day {
+                "終日".to_string()
+            } else {
+                if let Ok(start_datetime) = &e.start_at.parse::<DateTime<Utc>>() {
+                    let start_datetime = start_datetime.with_timezone(&FixedOffset::east(9 * 3600));
+                    start = start_datetime.format("%H:%M").to_string();
+                }
+                if let Ok(end_datetime) = &e.end_at.parse::<DateTime<Utc>>() {
+                    let end_datetime = end_datetime.with_timezone(&FixedOffset::east(9 * 3600));
+                    end = end_datetime.format("%H:%M").to_string();
+                }
+                format!("{}～{}", start, end)
+            },
+        });
+    }
+    result
+}
+
+#[tokio::main]
+async fn send_message(
+    settings: &Settings,
+    embeds: Embed,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("[info] Sending message...");
+
+    let date = Utc::now().format("%Y/%m/%d").to_string();
     let client = reqwest::Client::new();
     let _resp = client
         .post(format!(
@@ -29,21 +114,7 @@ async fn send_message(settings: Settings) -> Result<(), Box<dyn std::error::Erro
             json!({
                 "content": format!("おはようございます。{}の予定をお知らせします。", date),
                 "tts": false,
-                "embeds": [{
-                    "title": "今日の予定",
-                    "description": "2件の予定があります。",
-                    "color": 0x2ecc87, // TimeTree logo color #2ecc87
-                    "fields": [
-                        {
-                            "name": "予定その1",
-                            "value": "00:00～00:00"
-                        },
-                        {
-                            "name": "予定その2",
-                            "value": "00:00～23:59"
-                        }
-                    ]
-                }]
+                "embeds": [embeds]
             })
             .to_string(),
         )
@@ -57,7 +128,13 @@ fn main() {
     let file = File::open("env.json")
         .expect("cannot read `env.json`: did you create this file? try `cp sample-env.json env.json` and edit it.");
     let settings: Settings = serde_json::from_reader(BufReader::new(file)).unwrap();
-    match send_message(settings) {
+
+    let mut events = Vec::<Event>::new();
+    match fetch_timetree_event(&settings) {
+        Err(why) => println!("[ERR] {:?}", why),
+        Ok(e) => events = e,
+    }
+    match send_message(&settings, create_embeds(&events)) {
         Err(why) => println!("[ERR] {:?}", why),
         _ => (),
     }
