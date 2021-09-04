@@ -68,16 +68,16 @@ async fn fetch_timetree_event(
     let mut events: Vec<Event> = Vec::new();
     let jst = FixedOffset::east(9 * 3600);
     for item in resp.data {
+        let item = item.attributes;
         events.push(Event {
-            title: item.attributes.title,
-            all_day: item.attributes.all_day,
-            start_at: if let Ok(start_datetime) = &item.attributes.start_at.parse::<DateTime<Utc>>()
-            {
+            title: item.title,
+            all_day: item.all_day,
+            start_at: if let Ok(start_datetime) = &item.start_at.parse::<DateTime<Utc>>() {
                 start_datetime.with_timezone(&jst)
             } else {
                 Utc::now().with_timezone(&jst)
             },
-            end_at: if let Ok(end_datetime) = &item.attributes.end_at.parse::<DateTime<Utc>>() {
+            end_at: if let Ok(end_datetime) = &item.end_at.parse::<DateTime<Utc>>() {
                 end_datetime.with_timezone(&jst)
             } else {
                 Utc::now().with_timezone(&jst)
