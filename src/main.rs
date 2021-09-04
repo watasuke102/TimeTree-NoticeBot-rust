@@ -13,11 +13,24 @@ struct Settings {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct Embed {
+    title: String,
+    description: String,
+    color: u32,
+    fields: Vec<Field>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+struct Field {
+    name: String,
+    value: String,
+}
+
+#[derive(Debug)]
 struct Event {
     title: String,
     all_day: bool,
-    start_at: String,
-    end_at: String,
+    start_at: DateTime<FixedOffset>,
+    end_at: DateTime<FixedOffset>,
 }
 
 #[tokio::main]
@@ -30,7 +43,14 @@ async fn fetch_timetree_event(
     }
     #[derive(Debug, Serialize, Deserialize)]
     struct TimeTreeAttributes {
-        attributes: Event,
+        attributes: EventFromApi,
+    }
+    #[derive(Debug, Serialize, Deserialize)]
+    struct EventFromApi {
+        title: String,
+        all_day: bool,
+        start_at: String,
+        end_at: String,
     }
     let client = reqwest::Client::new();
     let resp = client
@@ -44,23 +64,27 @@ async fn fetch_timetree_event(
         .await?
         .json::<TimeTreeEventList>()
         .await?;
+
     let mut events: Vec<Event> = Vec::new();
+    let jst = FixedOffset::east(9 * 3600);
     for item in resp.data {
-        events.push(item.attributes);
+        events.push(Event {
+            title: item.attributes.title,
+            all_day: item.attributes.all_day,
+            start_at: if let Ok(start_datetime) = &item.attributes.start_at.parse::<DateTime<Utc>>()
+            {
+                start_datetime.with_timezone(&jst)
+            } else {
+                Utc::now().with_timezone(&jst)
+            },
+            end_at: if let Ok(end_datetime) = &item.attributes.end_at.parse::<DateTime<Utc>>() {
+                end_datetime.with_timezone(&jst)
+            } else {
+                Utc::now().with_timezone(&jst)
+            },
+        });
     }
     Ok(events)
-}
-#[derive(Debug, Serialize, Deserialize)]
-struct Embed {
-    title: String,
-    description: String,
-    color: u32,
-    fields: Vec<Field>,
-}
-#[derive(Debug, Serialize, Deserialize)]
-struct Field {
-    name: String,
-    value: String,
 }
 
 fn create_embeds(events: &Vec<Event>) -> Embed {
@@ -74,28 +98,21 @@ fn create_embeds(events: &Vec<Event>) -> Embed {
     for e in events.iter() {
         let mut time = "終日".to_string();
         if !e.all_day {
-            if let Ok(start_datetime) = &e.start_at.parse::<DateTime<Utc>>() {
-                if let Ok(end_datetime) = &e.end_at.parse::<DateTime<Utc>>() {
-                    let start_datetime = start_datetime.with_timezone(&FixedOffset::east(9 * 3600));
-                    let end_datetime = end_datetime.with_timezone(&FixedOffset::east(9 * 3600));
-
-                    // 開始日と終了日が一致する場合は日付を表示しない
-                    if start_datetime.date() == end_datetime.date() {
-                        time = format!(
-                            "{}～{}",
-                            start_datetime.format("%H:%M"),
-                            end_datetime.format("%H:%M")
-                        )
-                        .to_string();
-                    } else {
-                        time = format!(
-                            "{}～{}",
-                            start_datetime.format("%m/%d %H:%M"),
-                            end_datetime.format("%m/%d %H:%M")
-                        )
-                        .to_string();
-                    }
-                }
+            // 開始日と終了日が一致する場合は日付を表示しない
+            if e.start_at.date() == e.end_at.date() {
+                time = format!(
+                    "{}～{}",
+                    e.start_at.format("%H:%M"),
+                    e.end_at.format("%H:%M")
+                )
+                .to_string();
+            } else {
+                time = format!(
+                    "{}～{}",
+                    e.start_at.format("%m/%d %H:%M"),
+                    e.end_at.format("%m/%d %H:%M")
+                )
+                .to_string();
             }
         }
 
