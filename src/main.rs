@@ -1,4 +1,4 @@
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, FixedOffset, Local, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs::File;
@@ -127,11 +127,10 @@ fn create_embeds(events: &Vec<Event>) -> Embed {
 #[tokio::main]
 async fn send_message(
     settings: &Settings,
+    title: String,
     embeds: Embed,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("[info] Sending message...");
-
-    let date = Utc::now().format("%Y/%m/%d").to_string();
     let client = reqwest::Client::new();
     let _resp = client
         .post(format!(
@@ -142,7 +141,7 @@ async fn send_message(
         .header("Authorization", format!("Bot {}", settings.discord_token))
         .body(
             json!({
-                "content": format!("おはようございます。{}の予定をお知らせします。", date),
+                "content": title,
                 "tts": false,
                 "embeds": [embeds]
             })
@@ -164,8 +163,18 @@ fn main() {
         Err(why) => println!("[ERR] {:?}", why),
         Ok(e) => events = e,
     }
-    match send_message(&settings, create_embeds(&events)) {
-        Err(why) => println!("[ERR] {:?}", why),
-        _ => (),
+
+    if Local::now().time().hour() == 8 && Local::now().time().minute() == 0 {
+        match send_message(
+            &settings,
+            format!(
+                "おはようございます。{}の予定をお知らせします。",
+                Local::now().format("%Y/%m/%d")
+            ),
+            create_embeds(&events),
+        ) {
+            Err(why) => println!("[ERR] {:?}", why),
+            _ => (),
+        }
     }
 }
