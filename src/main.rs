@@ -158,14 +158,16 @@ fn main() {
         .expect("cannot read `env.json`: did you create this file? try `cp sample-env.json env.json` and edit it.");
     let settings: Settings = serde_json::from_reader(BufReader::new(file)).unwrap();
 
+    println!("[info] Bot is running...");
     let mut events = Vec::<Event>::new();
     match fetch_timetree_event(&settings) {
         Err(why) => println!("[ERR] {:?}", why),
         Ok(e) => events = e,
     }
 
-    if Local::now().time().hour() == 8 && Local::now().time().minute() == 0 {
-        match send_message(
+    let now = Utc::now().with_timezone(&FixedOffset::east(9 * 3600));
+    if now.time().hour() == 8 && now.time().minute() == 0 {
+        if let Err(why) = send_message(
             &settings,
             format!(
                 "おはようございます。{}の予定をお知らせします。",
@@ -173,8 +175,8 @@ fn main() {
             ),
             create_embeds(&events),
         ) {
-            Err(why) => println!("[ERR] {:?}", why),
-            _ => (),
+            println!("[ERR] {:?}", why);
         }
     }
+    println!("[info] Bot is exiting...");
 }
