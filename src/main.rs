@@ -19,7 +19,7 @@ struct Settings {
     channel_id: String,
     timetree_key: String,
     timetree_id: String,
-    enable_everyone: bool,
+    disable_everyone: bool,
     silent_mode: bool,
 }
 
@@ -81,7 +81,7 @@ async fn send_message(
         .body(
             json!({
                 "content": format!("{}{}",
-                    if settings.enable_everyone{"@everyone\n"} else {""},
+                    if settings.disable_everyone{""} else {"@everyone\n"},
                     title
                 ),
                 "tts": false,

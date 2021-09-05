@@ -3,6 +3,6 @@
     "channel_id": "",
     "timetree_key": "",
     "timetree_id": "",
-    "enable_everyone": true,
+    "disable_everyone": false,
     "silent_mode": false
 }
