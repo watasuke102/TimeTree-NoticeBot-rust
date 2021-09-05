@@ -225,6 +225,21 @@ fn main() {
     let file = File::open("env.json")
         .expect("cannot read `env.json`: did you create this file? try `cp sample-env.json env.json` and edit it.");
     let settings: Settings = serde_json::from_reader(BufReader::new(file)).unwrap();
+    {
+        let empty = String::new();
+        if settings.discord_token == empty {
+            panic!("FATAL: `discord_token` in env.json is empty");
+        }
+        if settings.channel_id == empty {
+            panic!("FATAL: `channel_id` in env.json is empty");
+        }
+        if settings.timetree_key == empty {
+            panic!("FATAL: `timetree_key` in env.json is empty");
+        }
+        if settings.timetree_id == empty {
+            panic!("FATAL: `timetree_id` in env.json is empty");
+        }
+    }
     let mut events = Vec::<Event>::new();
 
     log(&settings, LogType::Info, "Bot is running...");
