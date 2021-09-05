@@ -4,6 +4,7 @@ use serde_json::json;
 use std::fs::File;
 use std::io::BufReader;
 use std::ops::Add;
+use std::{thread, time};
 
 #[derive(Serialize, Deserialize)]
 struct Settings {
@@ -40,7 +41,7 @@ async fn send_message(
     title: String,
     embeds: Embed,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("[info] Sending message...");
+    println!("[info] Sending message '{}'", title);
     let client = reqwest::Client::new();
     let _resp = client
         .post(format!(
@@ -117,7 +118,7 @@ async fn fetch_timetree_event(
     Ok(events)
 }
 
-fn create_embeds(events: &Vec<Event>) -> Embed {
+fn create_eventlist_embeds(events: &Vec<Event>) -> Embed {
     let mut result = Embed {
         title: "今日の予定".to_string(),
         description: format!("今日の予定は{}件です。", events.len()).to_string(),
@@ -193,27 +194,33 @@ fn main() {
     let file = File::open("env.json")
         .expect("cannot read `env.json`: did you create this file? try `cp sample-env.json env.json` and edit it.");
     let settings: Settings = serde_json::from_reader(BufReader::new(file)).unwrap();
+    let mut events = Vec::<Event>::new();
 
     println!("[info] Bot is running...");
-    let mut events = Vec::<Event>::new();
-    match fetch_timetree_event(&settings) {
-        Err(why) => println!("[ERR] {:?}", why),
-        Ok(e) => events = e,
-    }
-
-    let now = Utc::now().with_timezone(&FixedOffset::east(9 * 3600));
-    if now.time().hour() == 8 && now.time().minute() == 0 {
-        if let Err(why) = send_message(
-            &settings,
-            format!(
-                "おはようございます。{}の予定をお知らせします。",
-                Local::now().format("%Y/%m/%d")
-            ),
-            create_embeds(&events),
-        ) {
-            println!("[ERR] {:?}", why);
+    loop {
+        let now = Utc::now().with_timezone(&FixedOffset::east(9 * 3600));
+        println!(
+            "[info] {}: checking events",
+            now.format("%Y/%m/%d %H:%M:%S")
+        );
+        match fetch_timetree_event(&settings) {
+            Err(why) => println!("[ERR] {:?}", why),
+            Ok(e) => events = e,
         }
+        if now.time().hour() == 8 && now.time().minute() == 0 {
+            if let Err(why) = send_message(
+                &settings,
+                format!(
+                    "おはようございます。{}の予定をお知らせします。",
+                    Local::now().format("%Y/%m/%d")
+                ),
+                create_eventlist_embeds(&events),
+            ) {
+                println!("[ERR] {:?}", why);
+            }
+        }
+        check_event_after_10min(&settings, &events);
+        thread::sleep(time::Duration::from_millis(1000 * 60));
     }
-    check_event_after_10min(&settings, &events);
     println!("[info] Bot is exiting...");
 }
