@@ -1,3 +1,10 @@
+// TimeTree-NoticeBot-rust
+// main.rs
+//
+// CopyRight (c) 2021 Watasuke
+// Email  : <watasuke102@gmail.com>
+// Twitter: @Watasuke102
+// This software is released under the MIT SUSHI-WARE License.
 use chrono::{DateTime, Duration, FixedOffset, Local, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
