@@ -1,8 +1,9 @@
-use chrono::{DateTime, FixedOffset, Local, Timelike, Utc};
+use chrono::{DateTime, Duration, FixedOffset, Local, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs::File;
 use std::io::BufReader;
+use std::ops::Add;
 
 #[derive(Serialize, Deserialize)]
 struct Settings {
@@ -31,6 +32,35 @@ struct Event {
     all_day: bool,
     start_at: DateTime<FixedOffset>,
     end_at: DateTime<FixedOffset>,
+}
+
+#[tokio::main]
+async fn send_message(
+    settings: &Settings,
+    title: String,
+    embeds: Embed,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("[info] Sending message...");
+    let client = reqwest::Client::new();
+    let _resp = client
+        .post(format!(
+            "https://discord.com/api/channels/{}/messages",
+            settings.channel_id
+        ))
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bot {}", settings.discord_token))
+        .body(
+            json!({
+                "content": title,
+                "tts": false,
+                "embeds": [embeds]
+            })
+            .to_string(),
+        )
+        .send()
+        .await?;
+    println!("[info] Sending was finished");
+    Ok(())
 }
 
 #[tokio::main]
@@ -124,33 +154,39 @@ fn create_embeds(events: &Vec<Event>) -> Embed {
     result
 }
 
-#[tokio::main]
-async fn send_message(
-    settings: &Settings,
-    title: String,
-    embeds: Embed,
-) -> Result<(), Box<dyn std::error::Error>> {
-    println!("[info] Sending message...");
-    let client = reqwest::Client::new();
-    let _resp = client
-        .post(format!(
-            "https://discord.com/api/channels/{}/messages",
-            settings.channel_id
-        ))
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bot {}", settings.discord_token))
-        .body(
-            json!({
-                "content": title,
-                "tts": false,
-                "embeds": [embeds]
-            })
-            .to_string(),
-        )
-        .send()
-        .await?;
-    println!("[info] Sending was finished");
-    Ok(())
+fn check_event_after_10min(settings: &Settings, events: &Vec<Event>) {
+    if events.len() == 0 {
+        return;
+    }
+    let mut embed = Embed {
+        title: "まもなく開始".to_string(),
+        description: "".to_string(),
+        color: 0x2ecc87, // TimeTree logo color
+        fields: Vec::<Field>::new(),
+    };
+
+    let now = Utc::now()
+        .with_timezone(&FixedOffset::east(9 * 3600))
+        .time()
+        .add(Duration::minutes(10));
+    for e in events.iter() {
+        if now.hour() == e.start_at.time().hour() && now.minute() == e.start_at.time().minute() {
+            embed.fields.push(Field {
+                name: format!("{}", e.title).to_string(),
+                value: format!("{}～", e.start_at.format("%H:%M")).to_string(),
+            });
+        }
+    }
+
+    if embed.fields.len() != 0 {
+        if let Err(why) = send_message(
+            settings,
+            "10分後に以下の予定があります。".to_string(),
+            embed,
+        ) {
+            println!("[ERR] {:?}", why);
+        }
+    }
 }
 
 fn main() {
@@ -178,5 +214,6 @@ fn main() {
             println!("[ERR] {:?}", why);
         }
     }
+    check_event_after_10min(&settings, &events);
     println!("[info] Bot is exiting...");
 }
