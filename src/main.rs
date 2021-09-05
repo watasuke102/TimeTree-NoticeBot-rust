@@ -19,6 +19,23 @@ struct Settings {
     channel_id: String,
     timetree_key: String,
     timetree_id: String,
+    enable_everyone: bool,
+    silent_mode: bool,
+}
+
+#[derive(Debug)]
+enum LogType {
+    Info,
+    Error,
+}
+fn log(settings: &Settings, log_type: LogType, body: &str) {
+    if !settings.silent_mode {
+        let body = format!("[{:?}] {}", log_type, body);
+        match log_type {
+            LogType::Info => println!("{}", body),
+            LogType::Error => eprintln!("{}", body),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -48,7 +65,11 @@ async fn send_message(
     title: String,
     embeds: Embed,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("[info] Sending message '{}'", title);
+    log(
+        settings,
+        LogType::Info,
+        &format!("Sending message '{}'", title),
+    );
     let client = reqwest::Client::new();
     let _resp = client
         .post(format!(
@@ -59,7 +80,10 @@ async fn send_message(
         .header("Authorization", format!("Bot {}", settings.discord_token))
         .body(
             json!({
-                "content": title,
+                "content": format!("{}{}",
+                    if settings.enable_everyone{"@everyone\n"} else {""},
+                    title
+                ),
                 "tts": false,
                 "embeds": [embeds]
             })
@@ -67,7 +91,7 @@ async fn send_message(
         )
         .send()
         .await?;
-    println!("[info] Sending was finished");
+    log(settings, LogType::Info, "Sending was finished");
     Ok(())
 }
 
@@ -192,7 +216,7 @@ fn check_event_after_10min(settings: &Settings, events: &Vec<Event>) {
             "10分後に以下の予定があります。".to_string(),
             embed,
         ) {
-            println!("[ERR] {:?}", why);
+            log(&settings, LogType::Error, &format!("{:?}", why));
         }
     }
 }
@@ -203,15 +227,16 @@ fn main() {
     let settings: Settings = serde_json::from_reader(BufReader::new(file)).unwrap();
     let mut events = Vec::<Event>::new();
 
-    println!("[info] Bot is running...");
+    log(&settings, LogType::Info, "Bot is running...");
     loop {
         let now = Utc::now().with_timezone(&FixedOffset::east(9 * 3600));
-        println!(
-            "[info] {}: checking events",
-            now.format("%Y/%m/%d %H:%M:%S")
+        log(
+            &settings,
+            LogType::Info,
+            &format!("{}: checking events", now.format("%Y/%m/%d %H:%M:%S")),
         );
         match fetch_timetree_event(&settings) {
-            Err(why) => println!("[ERR] {:?}", why),
+            Err(why) => log(&settings, LogType::Error, &format!("{:?}", why)),
             Ok(e) => events = e,
         }
         if now.time().hour() == 8 && now.time().minute() == 0 {
@@ -223,11 +248,10 @@ fn main() {
                 ),
                 create_eventlist_embeds(&events),
             ) {
-                println!("[ERR] {:?}", why);
+                log(&settings, LogType::Error, &format!("{:?}", why));
             }
         }
         check_event_after_10min(&settings, &events);
         thread::sleep(time::Duration::from_millis(1000 * 60));
     }
-    println!("[info] Bot is exiting...");
 }
