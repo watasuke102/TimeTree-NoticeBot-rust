@@ -202,7 +202,9 @@ fn check_event_after_10min(settings: &Settings, events: &Vec<Event>) {
         .time()
         .add(Duration::minutes(10));
     for e in events.iter() {
-        if now.hour() == e.start_at.time().hour() && now.minute() == e.start_at.time().minute() {
+        if (now.hour() == e.start_at.time().hour() && now.minute() == e.start_at.time().minute())
+            && !e.all_day
+        {
             embed.fields.push(Field {
                 name: format!("{}", e.title).to_string(),
                 value: format!("{}～", e.start_at.format("%H:%M")).to_string(),
